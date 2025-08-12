@@ -1,0 +1,159 @@
+/* src/assets/global.css - Add this file and import it in main.js */
+
+/* Dark theme for the entire app */
+.v-application {
+  background: linear-gradient(180deg, #0f0f12 0%, #141418 100%) !important;
+  color: #eaeaea !important;
+}
+
+/* Override Vuetify's default dark theme colors */
+.theme--dark.v-card {
+  background-color: #1e1e1e !important;
+  color: #eaeaea !important;
+}
+
+.theme--dark.v-sheet {
+  background-color: #1a1a1a !important;
+}
+
+/* Text field dark theme improvements */
+.v-text-field--outlined.theme--dark .v-input__slot {
+  background-color: rgba(255, 255, 255, 0.04) !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+.v-text-field--outlined.theme--dark:not(.v-input--is-focused)
+  .v-input__slot:hover {
+  border-color: rgba(255, 255, 255, 0.3) !important;
+}
+
+.v-text-field--outlined.theme--dark.v-input--is-focused .v-input__slot {
+  border-color: #1976d2 !important;
+  border-width: 2px !important;
+}
+
+/* Autocomplete improvements */
+.v-autocomplete.theme--dark .v-select__selections {
+  color: #eaeaea !important;
+}
+
+.v-menu__content.theme--dark {
+  background-color: #2a2a2a !important;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.v-list-item.theme--dark:hover {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Chip improvements */
+.v-chip.theme--dark {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+  color: #eaeaea !important;
+}
+
+.v-chip--outlined.theme--dark {
+  border-color: rgba(255, 255, 255, 0.3) !important;
+}
+
+/* Button improvements */
+.v-btn.theme--dark {
+  color: #eaeaea !important;
+}
+
+.v-btn--outlined.theme--dark {
+  border-color: rgba(255, 255, 255, 0.3) !important;
+}
+
+.v-btn--outlined.theme--dark:hover {
+  background-color: rgba(255, 255, 255, 0.04) !important;
+}
+
+/* Dialog improvements */
+.v-dialog .v-card {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Scrollbar styling for webkit browsers */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.5);
+}
+
+/* Mana symbol global styling */
+.mana-symbol {
+  width: 18px !important;
+  height: 18px !important;
+  vertical-align: -3px;
+  margin: 0 1px;
+  display: inline-block;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
+}
+
+/* Loading states */
+.v-progress-circular {
+  color: #1976d2 !important;
+}
+
+/* Snackbar improvements */
+.v-snack__wrapper {
+  border-radius: 8px !important;
+}
+
+/* Card hover effects */
+.v-card.hoverable {
+  transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+/* Typography improvements */
+.v-card-title {
+  font-weight: 500 !important;
+  font-size: 1.1rem !important;
+}
+
+.v-card-subtitle {
+  opacity: 0.7 !important;
+  font-size: 0.9rem !important;
+}
+
+/* Responsive improvements */
+@media (max-width: 600px) {
+  .v-dialog {
+    margin: 0 !important;
+  }
+
+  .v-dialog .v-card {
+    margin: 8px !important;
+    max-height: calc(100vh - 16px) !important;
+  }
+
+  .printings-group {
+    margin: 0 -8px;
+    padding: 0 8px;
+  }
+}
+
+/* Animation improvements */
+.v-dialog__content {
+  transition: opacity 0.2s ease;
+}
+
+.v-card-actions {
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  margin-top: 16px;
+  padding-top: 16px;
+}

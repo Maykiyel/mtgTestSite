@@ -5,30 +5,54 @@ import router from "./router";
 import store from "./store";
 import vuetify from "./plugins/vuetify";
 import { enableApiDebug } from "@/services/apiClient";
+import "@/assets/global.css";
 
 Vue.config.productionTip = false;
 
-// enable API debug logging in dev
+// Enable API debug logging in development
 if (process.env.NODE_ENV !== "production") {
   enableApiDebug(true);
 }
 
-// Wait for mana symbols (best-effort) before mounting to reduce flicker.
+// Enhanced error handling for uncaught errors
+Vue.config.errorHandler = (err, vm, info) => {
+  console.error("Vue Error:", err);
+  console.error("Component:", vm);
+  console.error("Error Info:", info);
+
+  // Optionally show user-friendly error
+  if (vm && vm.$store) {
+    vm.$store.commit("mtg/SET_ERROR", "An unexpected error occurred");
+  }
+};
+
+// Initialize the application
 (async function initApp() {
   try {
-    // Try to prefetch mana symbols (non-fatal)
+    // Prefetch mana symbols for better UX (non-blocking)
     await store.dispatch("mtg/fetchManaSymbols");
+    console.log("Mana symbols loaded successfully");
   } catch (e) {
-    // log and continue — app will still mount
-    // eslint-disable-next-line no-console
-    console.warn("Failed to prefetch mana symbols:", e && e.message);
+    // Log warning but continue - app will still work without mana symbols
+    console.warn("Failed to prefetch mana symbols:", e?.message || e);
   }
 
-  // Mount the app after attempting to fetch critical startup data
+  // Mount the Vue application
   new Vue({
     router,
     store,
     vuetify,
     render: (h) => h(App),
   }).$mount("#app");
-})();
+
+  console.log("MTG Card Viewer initialized successfully");
+})().catch((err) => {
+  console.error("Failed to initialize app:", err);
+  // Fallback: mount app anyway
+  new Vue({
+    router,
+    store,
+    vuetify,
+    render: (h) => h(App),
+  }).$mount("#app");
+});

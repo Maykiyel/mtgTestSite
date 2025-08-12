@@ -1,7 +1,7 @@
 <template>
   <v-container fluid class="pa-4 mtg-theme">
     <!-- Notifications -->
-    <v-snackbar v-model="errorSnackbar" color="error" top right>
+    <v-snackbar v-model="errorSnackbar" color="error" top right timeout="6000">
       {{ errorMessage }}
       <v-btn text @click="errorSnackbar = false">Close</v-btn>
     </v-snackbar>
@@ -9,9 +9,9 @@
     <!-- Top toolbar: autocomplete + search -->
     <v-row class="mb-4" align="center">
       <v-col cols="12" md="8">
-        <v-autocomplete v-model="selectedAutocomplete" :items="autocomplete" :loading="autocompleteLoading" hide-no-data
-          hide-details clearable label="Search card name (autocomplete)" @change="onAutocompleteSelect"
-          @update:search-input="onAutocompleteTyping" :search-input.sync="searchText" dense outlined
+        <v-autocomplete v-model="selectedAutocomplete" :items="autocomplete" :loading="autocompleteLoading"
+          :search-input.sync="searchText" hide-no-data hide-details clearable label="Search card name (autocomplete)"
+          @change="onAutocompleteSelect" @update:search-input="onAutocompleteTyping" dense outlined
           prepend-inner-icon="mdi-magnify" />
       </v-col>
 
@@ -21,55 +21,78 @@
       </v-col>
     </v-row>
 
+    <!-- Loading indicator -->
+    <v-row v-if="loading && !cards.length" justify="center" class="my-8">
+      <v-progress-circular indeterminate size="64" color="primary" />
+    </v-row>
+
     <!-- Card grid -->
-    <v-row>
+    <v-row v-if="cards.length">
       <v-col v-for="card in cards" :key="card.id" cols="12" sm="6" md="4" lg="3">
-        <v-card class="hoverable" elevation="2" @click="selectCard(card.id)">
-          <v-img
-            :src="card.image_uris ? card.image_uris.small : (card.card_faces && card.card_faces[0] ? card.card_faces[0].image_uris.small : placeholderImage)"
-            height="310" cover />
-          <v-card-title class="justify-space-between">
+        <v-card class="hoverable card-item" elevation="2" @click="selectCard(card.id)">
+          <v-img :src="getCardThumbnail(card)" height="310" cover :lazy-src="placeholderImage" />
+          <v-card-title class="justify-space-between py-2">
             <div class="truncate-1">{{ card.name }}</div>
-            <v-chip small>{{ card.set.toUpperCase() }}</v-chip>
+            <v-chip small color="primary" outlined>{{ card.set.toUpperCase() }}</v-chip>
           </v-card-title>
-          <v-card-subtitle class="pl-4 text--secondary">{{ card.type_line }}</v-card-subtitle>
+          <v-card-subtitle class="pl-4 text--secondary py-1">{{ card.type_line }}</v-card-subtitle>
         </v-card>
       </v-col>
     </v-row>
 
+    <!-- Load more button -->
     <v-row v-if="searchHasMore" class="my-4" justify="center">
-      <v-btn :loading="loadingMore" @click="loadMore">Load more</v-btn>
+      <v-btn :loading="loadingMore" @click="loadMore" color="primary" outlined large>
+        Load More Cards
+      </v-btn>
+    </v-row>
+
+    <!-- Empty state -->
+    <v-row v-if="!loading && !cards.length && !error" justify="center" class="my-8">
+      <v-col cols="12" md="6" class="text-center">
+        <v-icon size="64" color="grey">mdi-cards-outline</v-icon>
+        <h3 class="mt-4 grey--text">No cards found</h3>
+        <p class="grey--text">Try searching for a different card or term</p>
+      </v-col>
     </v-row>
 
     <!-- Card details dialog -->
-    <v-dialog v-model="dialog" max-width="1100px" persistent>
+    <v-dialog v-model="dialog" max-width="1200px" persistent>
       <v-card v-if="card" class="pa-4">
         <v-row>
           <v-col cols="12" md="5">
-            <v-sheet class="d-flex justify-center" elevation="3">
-              <v-img :src="currentPreviewImage || currentCardImage || placeholderImage" max-height="520" contain />
+            <v-sheet class="d-flex justify-center card-image-container" elevation="3">
+              <v-img :src="currentPreviewImage || currentCardImage || placeholderImage" max-height="520" contain
+                class="card-detail-image" />
             </v-sheet>
 
-            <v-slide-group show-arrows class="mt-3 printings-group">
-              <v-slide-item v-for="p in printings" :key="p.id">
-                <v-tooltip bottom>
-                  <template v-slot:activator="{ on, attrs }">
-                    <v-avatar v-bind="attrs" v-on="on" class="mr-2 printing-thumb" tile size="76"
-                      @click="setPreviewFromPrinting(p)">
-                      <v-img :src="printingThumb(p)" cover />
-                    </v-avatar>
-                  </template>
-                  <span>{{ p.set_name }} • {{ p.collector_number }} • {{ p.rarity }}</span>
-                </v-tooltip>
-              </v-slide-item>
-            </v-slide-group>
+            <!-- Printings carousel -->
+            <div v-if="printings.length > 1" class="mt-3">
+              <h4 class="mb-2">Other Printings ({{ printings.length }})</h4>
+              <v-slide-group show-arrows class="printings-group">
+                <v-slide-item v-for="p in printings" :key="p.id">
+                  <v-tooltip bottom>
+                    <template v-slot:activator="{ on, attrs }">
+                      <v-avatar v-bind="attrs" v-on="on" class="mr-2 printing-thumb"
+                        :class="{ 'printing-active': isActivePrinting(p) }" tile size="76"
+                        @click="setPreviewFromPrinting(p)">
+                        <v-img :src="printingThumb(p)" cover />
+                      </v-avatar>
+                    </template>
+                    <span>{{ p.set_name }} • {{ p.collector_number }} • {{ p.rarity }}</span>
+                  </v-tooltip>
+                </v-slide-item>
+              </v-slide-group>
+            </div>
           </v-col>
 
           <v-col cols="12" md="7">
-            <div class="d-flex align-center justify-space-between">
+            <div class="d-flex align-center justify-space-between mb-3">
               <div>
                 <h2 class="mb-1">{{ card.name }}</h2>
-                <div class="mt-1"><span v-html="renderManaHtml(card.mana_cost)"></span></div>
+                <div v-if="card.mana_cost" class="mt-1">
+                  <span v-html="renderManaHtml(card.mana_cost)"></span>
+                </div>
                 <div class="text--secondary mt-2">{{ card.type_line }}</div>
               </div>
 
@@ -77,216 +100,311 @@
                 <div class="text--secondary">Set</div>
                 <div><strong>{{ card.set_name }} ({{ card.set.toUpperCase() }})</strong></div>
                 <div class="text--secondary mt-2">Collector # / Rarity</div>
-                <div>{{ card.collector_number }} • {{ card.rarity }}</div>
+                <div>{{ card.collector_number }} • {{ capitalizeRarity(card.rarity) }}</div>
               </div>
             </div>
 
             <v-divider class="my-3"></v-divider>
 
+            <!-- Card faces (for double-sided cards) -->
             <div v-if="card.card_faces && card.card_faces.length">
-              <div v-for="(face, i) in card.card_faces" :key="i" class="mb-3 face-block">
+              <div v-for="(face, i) in card.card_faces" :key="i" class="mb-4 face-block">
                 <h3 class="mb-1">{{ face.name }}</h3>
-                <div class="text--secondary mb-1" v-html="renderManaHtml(face.mana_cost)"></div>
-                <div v-html="renderManaHtml(face.oracle_text)" class="oracle-text"></div>
+                <div v-if="face.mana_cost" class="text--secondary mb-2">
+                  <span v-html="renderManaHtml(face.mana_cost)"></span>
+                </div>
+                <div class="mb-2"><strong>{{ face.type_line }}</strong></div>
+                <div v-if="face.oracle_text" v-html="renderManaHtml(face.oracle_text)" class="oracle-text mb-2"></div>
                 <div v-if="face.flavor_text" class="mt-2 text--secondary"><em>{{ face.flavor_text }}</em></div>
-                <div v-if="face.power || face.toughness" class="mt-2"><strong>P/T:</strong> {{ face.power || '—' }}/{{
-                  face.toughness || '—' }}</div>
+                <div v-if="face.power || face.toughness" class="mt-2">
+                  <strong>P/T:</strong> {{ face.power || '—' }}/{{ face.toughness || '—' }}
+                </div>
+                <div v-if="face.loyalty" class="mt-2">
+                  <strong>Loyalty:</strong> {{ face.loyalty }}
+                </div>
+                <v-divider v-if="i < card.card_faces.length - 1" class="my-3"></v-divider>
               </div>
             </div>
+
+            <!-- Single-faced card -->
             <div v-else>
-              <div v-if="card.oracle_text" v-html="renderManaHtml(card.oracle_text)" class="oracle-text"></div>
+              <div v-if="card.oracle_text" v-html="renderManaHtml(card.oracle_text)" class="oracle-text mb-3"></div>
               <div v-if="card.flavor_text" class="mt-2 text--secondary"><em>{{ card.flavor_text }}</em></div>
-              <div v-if="card.power || card.toughness" class="mt-2"><strong>P/T:</strong> {{ card.power || '—' }}/{{
-                card.toughness || '—' }}</div>
-              <div v-if="card.loyalty" class="mt-2"><strong>Loyalty:</strong> {{ card.loyalty }}</div>
+              <div v-if="card.power || card.toughness" class="mt-2">
+                <strong>P/T:</strong> {{ card.power || '—' }}/{{ card.toughness || '—' }}
+              </div>
+              <div v-if="card.loyalty" class="mt-2">
+                <strong>Loyalty:</strong> {{ card.loyalty }}
+              </div>
             </div>
 
             <v-divider class="my-3"></v-divider>
 
+            <!-- Card metadata -->
             <v-row>
               <v-col cols="12" md="6">
-                <div><strong>Artist:</strong> {{ card.artist }}</div>
-                <div><strong>Oracle ID:</strong> {{ card.oracle_id }}</div>
-                <div><strong>Released:</strong> {{ card.released_at }}</div>
+                <div class="mb-1"><strong>Artist:</strong> {{ card.artist }}</div>
+                <div class="mb-1"><strong>Oracle ID:</strong> <code class="oracle-id">{{ card.oracle_id }}</code></div>
+                <div class="mb-1"><strong>Released:</strong> {{ formatDate(card.released_at) }}</div>
+                <div v-if="card.prices" class="mb-1">
+                  <strong>Price (USD):</strong>
+                  {{ card.prices.usd ? `$${card.prices.usd}` : 'N/A' }}
+                </div>
               </v-col>
               <v-col cols="12" md="6">
-                <div><strong>Legalities:</strong></div>
-                <div class="text--secondary" v-for="(v, k) in card.legalities" :key="k">{{ k }}: {{ v }}</div>
+                <div class="mb-2"><strong>Legalities:</strong></div>
+                <v-chip-group column>
+                  <v-chip v-for="(status, format) in card.legalities" :key="format" :color="getLegalityColor(status)"
+                    small outlined>
+                    {{ format }}: {{ status }}
+                  </v-chip>
+                </v-chip-group>
               </v-col>
             </v-row>
 
             <v-divider class="my-3"></v-divider>
 
+            <!-- Action buttons -->
             <div class="d-flex align-center">
-              <v-btn text @click="openScryfall">Open on Scryfall</v-btn>
+              <v-btn text color="primary" @click="openScryfall" :disabled="!card.scryfall_uri">
+                <v-icon left>mdi-open-in-new</v-icon>
+                Open on Scryfall
+              </v-btn>
               <v-spacer />
-              <v-btn outlined @click="dialog = false">Close</v-btn>
+              <v-btn outlined @click="closeDialog">Close</v-btn>
             </div>
           </v-col>
         </v-row>
       </v-card>
 
-      <v-card v-else>
-        <v-card-text><v-progress-circular indeterminate size="36" />
-        </v-card-text>
+      <!-- Loading state for dialog -->
+      <v-card v-else class="pa-8 text-center">
+        <v-progress-circular indeterminate size="64" color="primary" />
+        <div class="mt-4">Loading card details...</div>
       </v-card>
     </v-dialog>
   </v-container>
 </template>
 
 <script>
-import { mapState } from 'vuex';
+import { mapState, mapGetters } from 'vuex';
 import debounce from 'lodash/debounce';
 import manaRenderer from '@/utils/manaRenderer';
 
 export default {
   name: 'HomeView',
+
   data() {
     return {
       dialog: false,
-      placeholderImage: 'https://via.placeholder.com/488x680?text=No+Image',
+      placeholderImage: 'https://via.placeholder.com/488x680/2a2a2a/888888?text=No+Image',
       searchText: '',
       searchTextInput: '',
       selectedAutocomplete: null,
       autocompleteLoading: false,
       loadingMore: false,
       currentPreviewImage: null,
-      autocompleteTimer: null, // rename to avoid vue/no-reserved-keys
       errorSnackbar: false,
       errorMessage: '',
+      activePrintingId: null,
     };
   },
 
   computed: {
-    ...mapState('mtg', ['cards', 'card', 'printings']),
-    autocomplete() { return this.$store.state.mtg.autocomplete || []; },
-    searchHasMore() { return this.$store.state.mtg.search.has_more; },
-    currentCardImage() { return this.$store.getters['mtg/currentCardImage'] || null; },
-    manaSymbolMap() { return this.$store.getters['mtg/manaSymbolMap'] || this.$store.state.mtg.manaSymbols || {}; },
+    ...mapState('mtg', ['cards', 'card', 'printings', 'loading', 'error', 'autocomplete']),
+    ...mapGetters('mtg', ['currentCardImage', 'manaSymbolMap']),
+
+    searchHasMore() {
+      return this.$store.state.mtg.search.has_more;
+    },
+  },
+
+  watch: {
+    error(newError) {
+      if (newError) {
+        this.showError(newError);
+      }
+    },
+
+    card(newCard) {
+      if (newCard) {
+        this.activePrintingId = newCard.id;
+        this.currentPreviewImage = null; // Reset to show main card image
+      }
+    }
   },
 
   methods: {
-    _debounce(fn, wait = 300) { return debounce(fn, wait); },
+    async onAutocompleteTyping(query) {
+      this.searchText = query;
+      if (!query || query.length < 2) {
+        this.autocompleteLoading = false;
+        return;
+      }
 
-    async onAutocompleteTyping(q) {
-      this.searchText = q;
       this.autocompleteLoading = true;
-      this._debouncedFetchAutocomplete(q);
+      this.debouncedFetchAutocomplete(query);
     },
 
     async onAutocompleteSelect(name) {
       if (!name) return;
+
       try {
         await this.$store.dispatch('mtg/fetchCard', { named: name });
-        this.currentPreviewImage = this.previewImageForCard(this.card);
         this.dialog = true;
       } catch (err) {
-        this.showError('Failed to load card: ' + (err && err.response && err.response.data ? (err.response.data.details || err.response.data) : err.message));
-      } finally {
-        this.autocompleteLoading = false;
+        this.showError('Failed to load card: ' + err.message);
       }
+
+      // Clear autocomplete selection after use
+      this.selectedAutocomplete = null;
+      this.searchText = '';
     },
 
     async doSearch() {
-      const q = (this.searchTextInput || this.searchText || '').trim();
+      const query = (this.searchTextInput || this.searchText || '').trim();
+      if (!query) {
+        this.showError('Please enter a search term');
+        return;
+      }
+
       try {
-        this.loadingMore = true;
-        await this.$store.dispatch('mtg/fetchCards', { q: q || 'lang:en' });
+        await this.$store.dispatch('mtg/fetchCards', { q: query });
       } catch (err) {
-        this.showError('Search failed: ' + (err && err.message));
-      } finally {
-        this.loadingMore = false;
+        // Error is already shown via watcher
       }
     },
 
     async selectCard(id) {
       try {
         await this.$store.dispatch('mtg/fetchCard', id);
-        this.currentPreviewImage = this.previewImageForCard(this.card);
         this.dialog = true;
       } catch (err) {
-        this.showError('Failed to fetch card: ' + (err && err.message));
+        this.showError('Failed to fetch card: ' + err.message);
       }
     },
-
-    setPreviewFromPrinting(printing) {
-      const img = this.printingImage(printing);
-      if (img) this.currentPreviewImage = img;
-    },
-
-    previewImageForCard(cardObj) {
-      if (!cardObj) return null;
-      if (cardObj.image_uris && cardObj.image_uris.large) return cardObj.image_uris.large;
-      if (cardObj.card_faces && cardObj.card_faces[0] && cardObj.card_faces[0].image_uris && cardObj.card_faces[0].image_uris.large) {
-        return cardObj.card_faces[0].image_uris.large;
-      }
-      return null;
-    },
-
-    printingThumb(p) {
-      if (!p) return this.placeholderImage;
-      if (p.image_uris && p.image_uris.small) return p.image_uris.small;
-      if (p.card_faces && p.card_faces[0] && p.card_faces[0].image_uris && p.card_faces[0].image_uris.small) {
-        return p.card_faces[0].image_uris.small;
-      }
-      return this.placeholderImage;
-    },
-
-    printingImage(p) {
-      if (!p) return null;
-      if (p.image_uris && (p.image_uris.large || p.image_uris.normal || p.image_uris.png)) {
-        return p.image_uris.large || p.image_uris.normal || p.image_uris.png;
-      }
-      if (p.card_faces && p.card_faces[0] && p.card_faces[0].image_uris) {
-        return p.card_faces[0].image_uris.large || p.card_faces[0].image_uris.normal || p.card_faces[0].image_uris.png;
-      }
-      return null;
-    },
-
-    openScryfall() { if (this.card && this.card.scryfall_uri) window.open(this.card.scryfall_uri, '_blank'); },
 
     async loadMore() {
-      if (!this.searchHasMore) return;
+      if (!this.searchHasMore || this.loadingMore) return;
+
       this.loadingMore = true;
       try {
         await this.$store.dispatch('mtg/fetchCardsNextPage');
       } catch (err) {
-        this.showError('Load more failed: ' + (err && err.message));
+        this.showError('Load more failed: ' + err.message);
       } finally {
         this.loadingMore = false;
       }
     },
 
-    renderManaHtml(text) { return manaRenderer.renderManaHtml(text, this.manaSymbolMap); },
+    setPreviewFromPrinting(printing) {
+      this.activePrintingId = printing.id;
+      const img = this.printingImage(printing);
+      if (img) {
+        this.currentPreviewImage = img;
+      }
+    },
 
-    showError(msg) { this.errorMessage = msg; this.errorSnackbar = true; },
+    getCardThumbnail(card) {
+      if (card.image_uris?.small) return card.image_uris.small;
+      if (card.card_faces?.[0]?.image_uris?.small) {
+        return card.card_faces[0].image_uris.small;
+      }
+      return this.placeholderImage;
+    },
+
+    printingThumb(printing) {
+      if (!printing) return this.placeholderImage;
+      if (printing.image_uris?.small) return printing.image_uris.small;
+      if (printing.card_faces?.[0]?.image_uris?.small) {
+        return printing.card_faces[0].image_uris.small;
+      }
+      return this.placeholderImage;
+    },
+
+    printingImage(printing) {
+      if (!printing) return null;
+
+      const uris = printing.image_uris;
+      if (uris) {
+        return uris.large || uris.normal || uris.png;
+      }
+
+      const faceUris = printing.card_faces?.[0]?.image_uris;
+      if (faceUris) {
+        return faceUris.large || faceUris.normal || faceUris.png;
+      }
+
+      return null;
+    },
+
+    isActivePrinting(printing) {
+      return this.activePrintingId === printing.id;
+    },
+
+    openScryfall() {
+      if (this.card?.scryfall_uri) {
+        window.open(this.card.scryfall_uri, '_blank');
+      }
+    },
+
+    closeDialog() {
+      this.dialog = false;
+      this.currentPreviewImage = null;
+      this.activePrintingId = null;
+    },
+
+    renderManaHtml(text) {
+      return manaRenderer.renderManaHtml(text, this.manaSymbolMap);
+    },
+
+    showError(msg) {
+      this.errorMessage = msg;
+      this.errorSnackbar = true;
+    },
+
+    capitalizeRarity(rarity) {
+      if (!rarity) return '';
+      return rarity.charAt(0).toUpperCase() + rarity.slice(1);
+    },
+
+    getLegalityColor(status) {
+      switch (status) {
+        case 'legal': return 'success';
+        case 'banned': return 'error';
+        case 'restricted': return 'warning';
+        default: return 'grey';
+      }
+    },
+
+    formatDate(dateString) {
+      if (!dateString) return 'Unknown';
+      try {
+        return new Date(dateString).toLocaleDateString();
+      } catch {
+        return dateString;
+      }
+    },
   },
 
-  created() {
-    // debounced autocomplete method
-    this._debouncedFetchAutocomplete = this._debounce(async (q) => {
-      if (!q || q.length < 2) {
-        this.$store.commit('mtg/SET_AUTOCOMPLETE', []);
-        this.autocompleteLoading = false;
-        return;
-      }
+  async created() {
+    // Create debounced autocomplete method
+    this.debouncedFetchAutocomplete = debounce(async (query) => {
       try {
-        await this.$store.dispatch('mtg/fetchAutocomplete', q);
+        await this.$store.dispatch('mtg/fetchAutocomplete', query);
       } catch (err) {
-        console.warn('autocomplete failed', err);
+        console.warn('Autocomplete failed:', err.message);
       } finally {
         this.autocompleteLoading = false;
       }
     }, 300);
 
-    // explicit initial fetch using safe default query
-    (async () => {
-      try {
-        await this.$store.dispatch('mtg/fetchCards', { q: 'lang:en' });
-      } catch (err) {
-        this.showError('Initial data failed: ' + (err && err.message));
-      }
-    })();
+    // Load initial cards with a safe default search
+    try {
+      await this.$store.dispatch('mtg/fetchCards', { q: 'set:neo' }); // Default to recent set
+    } catch (err) {
+      // Error will be handled by watcher
+    }
   },
 };
 </script>
@@ -298,14 +416,29 @@ export default {
   min-height: 100vh;
 }
 
+.card-item {
+  background-color: #1e1e1e !important;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
 .hoverable {
   cursor: pointer;
-  transition: transform .12s ease, box-shadow .12s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .hoverable:hover {
   transform: translateY(-4px);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.6);
+}
+
+.card-image-container {
+  background-color: #1a1a1a;
+  border-radius: 8px;
+  padding: 8px;
+}
+
+.card-detail-image {
+  border-radius: 4px;
 }
 
 .printings-group {
@@ -315,19 +448,36 @@ export default {
 
 .printing-thumb {
   cursor: pointer;
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  transition: border-color 0.2s ease;
 }
 
-.mana-symbol {
-  width: 20px;
-  height: 20px;
-  vertical-align: -4px;
-  margin: 0 2px;
+.printing-thumb:hover {
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.printing-active {
+  border-color: #1976d2 !important;
+  box-shadow: 0 0 8px rgba(25, 118, 210, 0.3);
+}
+
+.face-block {
+  padding: 12px;
+  background-color: rgba(255, 255, 255, 0.02);
+  border-radius: 8px;
+  border-left: 3px solid #1976d2;
 }
 
 .oracle-text {
-  line-height: 1.35;
+  line-height: 1.4;
   white-space: pre-wrap;
+}
+
+.oracle-id {
+  font-size: 0.85em;
+  background-color: rgba(255, 255, 255, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
 }
 
 .truncate-1 {
@@ -335,5 +485,31 @@ export default {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Global mana symbol styling */
+:deep(.mana-symbol) {
+  width: 18px;
+  height: 18px;
+  vertical-align: -3px;
+  margin: 0 1px;
+  display: inline-block;
+}
+
+/* Dark theme adjustments for Vuetify components */
+:deep(.v-card) {
+  background-color: #1e1e1e !important;
+}
+
+:deep(.v-dialog .v-card) {
+  background-color: #2a2a2a !important;
+}
+
+:deep(.v-text-field--outlined .v-input__control .v-input__slot) {
+  background-color: rgba(255, 255, 255, 0.04) !important;
+}
+
+:deep(.v-autocomplete--is-selecting-index .v-chip) {
+  background-color: #1976d2 !important;
 }
 </style>
