@@ -1,222 +1,119 @@
 <template>
-  <v-container fluid class="pa-4 mtg-theme">
-    <!-- Notifications -->
-    <v-snackbar v-model="errorSnackbar" color="error" top right timeout="6000">
-      {{ errorMessage }}
-      <v-btn text @click="errorSnackbar = false">Close</v-btn>
-    </v-snackbar>
+  <div class="home-view">
+    <!-- Background effects -->
+    <div class="background-effects">
+      <div class="magic-circle magic-circle-1"></div>
+      <div class="magic-circle magic-circle-2"></div>
+      <div class="magic-circle magic-circle-3"></div>
+    </div>
 
-    <!-- Top toolbar: autocomplete + search -->
-    <v-row class="mb-4" align="center">
-      <v-col cols="12" md="8">
-        <v-autocomplete v-model="selectedAutocomplete" :items="autocomplete" :loading="autocompleteLoading"
-          :search-input.sync="searchText" hide-no-data hide-details clearable label="Search card name (autocomplete)"
-          @change="onAutocompleteSelect" @update:search-input="onAutocompleteTyping" dense outlined
-          prepend-inner-icon="mdi-magnify" />
-      </v-col>
+    <v-container fluid class="home-container">
+      <!-- Success/Error notifications -->
+      <v-snackbar v-model="errorSnackbar" color="error" top right timeout="6000" class="error-snackbar">
+        <v-icon left>mdi-alert-circle</v-icon>
+        {{ errorMessage }}
+        <template v-slot:action="{ attrs }">
+          <v-btn text v-bind="attrs" @click="errorSnackbar = false">
+            <v-icon>mdi-close</v-icon>
+          </v-btn>
+        </template>
+      </v-snackbar>
 
-      <v-col cols="12" md="4">
-        <v-text-field v-model="searchTextInput" label="Search query (Scryfall)" clearable dense outlined
-          @keyup.enter="doSearch" append-outer-icon="mdi-magnify" @click:append-outer="doSearch" />
-      </v-col>
-    </v-row>
+      <v-snackbar v-model="successSnackbar" color="success" top right timeout="3000" class="success-snackbar">
+        <v-icon left>mdi-check-circle</v-icon>
+        {{ successMessage }}
+        <template v-slot:action="{ attrs }">
+          <v-btn text v-bind="attrs" @click="successSnackbar = false">
+            <v-icon>mdi-close</v-icon>
+          </v-btn>
+        </template>
+      </v-snackbar>
 
-    <!-- Loading indicator -->
-    <v-row v-if="loading && !cards.length" justify="center" class="my-8">
-      <v-progress-circular indeterminate size="64" color="primary" />
-    </v-row>
+      <!-- Search section -->
+      <div class="search-section">
+        <CardSearchBar :autocomplete="autocomplete" @card-selected="onCardSelected" @search="onSearch"
+          @autocomplete-search="onAutocompleteSearch" />
+      </div>
 
-    <!-- Card grid -->
-    <v-row v-if="cards.length">
-      <v-col v-for="card in cards" :key="card.id" cols="12" sm="6" md="4" lg="3">
-        <v-card class="hoverable card-item" elevation="2" @click="selectCard(card.id)">
-          <v-img :src="getCardThumbnail(card)" height="310" cover :lazy-src="placeholderImage" />
-          <v-card-title class="justify-space-between py-2">
-            <div class="truncate-1">{{ card.name }}</div>
-            <v-chip small color="primary" outlined>{{ card.set.toUpperCase() }}</v-chip>
-          </v-card-title>
-          <v-card-subtitle class="pl-4 text--secondary py-1">{{ card.type_line }}</v-card-subtitle>
-        </v-card>
-      </v-col>
-    </v-row>
+      <!-- Results section -->
+      <div class="results-section">
+        <div v-if="cards.length" class="results-header">
+          <h2 class="results-title">
+            <v-icon left color="primary">mdi-cards-outline</v-icon>
+            Search Results
+          </h2>
+          <div class="results-meta">
+            {{ cards.length }} cards found
+            <span v-if="searchHasMore" class="has-more-indicator">
+              (more available)
+            </span>
+          </div>
+        </div>
 
-    <!-- Load more button -->
-    <v-row v-if="searchHasMore" class="my-4" justify="center">
-      <v-btn :loading="loadingMore" @click="loadMore" color="primary" outlined large>
-        Load More Cards
+        <CardGrid :cards="cards" :loading="loading" :loading-more="loadingMore" :has-more="searchHasMore" :error="error"
+          @card-selected="selectCard" @load-more="loadMore" @search="onSearch" />
+      </div>
+    </v-container>
+
+    <!-- Card detail dialog -->
+    <CardDetailDialog v-model="dialog" :card="card" :printings="printings" :current-preview-image="currentPreviewImage"
+      :active-printing-id="activePrintingId" @close="closeDialog" @preview-changed="setPreviewFromPrinting"
+      @show-message="showSuccessMessage" />
+
+    <!-- Floating action button for quick search -->
+    <v-fab-transition>
+      <v-btn v-show="!dialog && cards.length" fab fixed bottom right color="primary" class="fab-search"
+        @click="scrollToTop">
+        <v-icon>mdi-arrow-up</v-icon>
       </v-btn>
-    </v-row>
-
-    <!-- Empty state -->
-    <v-row v-if="!loading && !cards.length && !error" justify="center" class="my-8">
-      <v-col cols="12" md="6" class="text-center">
-        <v-icon size="64" color="grey">mdi-cards-outline</v-icon>
-        <h3 class="mt-4 grey--text">No cards found</h3>
-        <p class="grey--text">Try searching for a different card or term</p>
-      </v-col>
-    </v-row>
-
-    <!-- Card details dialog -->
-    <v-dialog v-model="dialog" max-width="1200px" persistent>
-      <v-card v-if="card" class="pa-4">
-        <v-row>
-          <v-col cols="12" md="5">
-            <v-sheet class="d-flex justify-center card-image-container" elevation="3">
-              <v-img :src="currentPreviewImage || currentCardImage || placeholderImage" max-height="520" contain
-                class="card-detail-image" />
-            </v-sheet>
-
-            <!-- Printings carousel -->
-            <div v-if="printings.length > 1" class="mt-3">
-              <h4 class="mb-2">Other Printings ({{ printings.length }})</h4>
-              <v-slide-group show-arrows class="printings-group">
-                <v-slide-item v-for="p in printings" :key="p.id">
-                  <v-tooltip bottom>
-                    <template v-slot:activator="{ on, attrs }">
-                      <v-avatar v-bind="attrs" v-on="on" class="mr-2 printing-thumb"
-                        :class="{ 'printing-active': isActivePrinting(p) }" tile size="76"
-                        @click="setPreviewFromPrinting(p)">
-                        <v-img :src="printingThumb(p)" cover />
-                      </v-avatar>
-                    </template>
-                    <span>{{ p.set_name }} • {{ p.collector_number }} • {{ p.rarity }}</span>
-                  </v-tooltip>
-                </v-slide-item>
-              </v-slide-group>
-            </div>
-          </v-col>
-
-          <v-col cols="12" md="7">
-            <div class="d-flex align-center justify-space-between mb-3">
-              <div>
-                <h2 class="mb-1">{{ card.name }}</h2>
-                <div v-if="card.mana_cost" class="mt-1">
-                  <span v-html="renderManaHtml(card.mana_cost)"></span>
-                </div>
-                <div class="text--secondary mt-2">{{ card.type_line }}</div>
-              </div>
-
-              <div class="text-right">
-                <div class="text--secondary">Set</div>
-                <div><strong>{{ card.set_name }} ({{ card.set.toUpperCase() }})</strong></div>
-                <div class="text--secondary mt-2">Collector # / Rarity</div>
-                <div>{{ card.collector_number }} • {{ capitalizeRarity(card.rarity) }}</div>
-              </div>
-            </div>
-
-            <v-divider class="my-3"></v-divider>
-
-            <!-- Card faces (for double-sided cards) -->
-            <div v-if="card.card_faces && card.card_faces.length">
-              <div v-for="(face, i) in card.card_faces" :key="i" class="mb-4 face-block">
-                <h3 class="mb-1">{{ face.name }}</h3>
-                <div v-if="face.mana_cost" class="text--secondary mb-2">
-                  <span v-html="renderManaHtml(face.mana_cost)"></span>
-                </div>
-                <div class="mb-2"><strong>{{ face.type_line }}</strong></div>
-                <div v-if="face.oracle_text" v-html="renderManaHtml(face.oracle_text)" class="oracle-text mb-2"></div>
-                <div v-if="face.flavor_text" class="mt-2 text--secondary"><em>{{ face.flavor_text }}</em></div>
-                <div v-if="face.power || face.toughness" class="mt-2">
-                  <strong>P/T:</strong> {{ face.power || '—' }}/{{ face.toughness || '—' }}
-                </div>
-                <div v-if="face.loyalty" class="mt-2">
-                  <strong>Loyalty:</strong> {{ face.loyalty }}
-                </div>
-                <v-divider v-if="i < card.card_faces.length - 1" class="my-3"></v-divider>
-              </div>
-            </div>
-
-            <!-- Single-faced card -->
-            <div v-else>
-              <div v-if="card.oracle_text" v-html="renderManaHtml(card.oracle_text)" class="oracle-text mb-3"></div>
-              <div v-if="card.flavor_text" class="mt-2 text--secondary"><em>{{ card.flavor_text }}</em></div>
-              <div v-if="card.power || card.toughness" class="mt-2">
-                <strong>P/T:</strong> {{ card.power || '—' }}/{{ card.toughness || '—' }}
-              </div>
-              <div v-if="card.loyalty" class="mt-2">
-                <strong>Loyalty:</strong> {{ card.loyalty }}
-              </div>
-            </div>
-
-            <v-divider class="my-3"></v-divider>
-
-            <!-- Card metadata -->
-            <v-row>
-              <v-col cols="12" md="6">
-                <div class="mb-1"><strong>Artist:</strong> {{ card.artist }}</div>
-                <div class="mb-1"><strong>Oracle ID:</strong> <code class="oracle-id">{{ card.oracle_id }}</code></div>
-                <div class="mb-1"><strong>Released:</strong> {{ formatDate(card.released_at) }}</div>
-                <div v-if="card.prices" class="mb-1">
-                  <strong>Price (USD):</strong>
-                  {{ card.prices.usd ? `$${card.prices.usd}` : 'N/A' }}
-                </div>
-              </v-col>
-              <v-col cols="12" md="6">
-                <div class="mb-2"><strong>Legalities:</strong></div>
-                <v-chip-group column>
-                  <v-chip v-for="(status, format) in card.legalities" :key="format" :color="getLegalityColor(status)"
-                    small outlined>
-                    {{ format }}: {{ status }}
-                  </v-chip>
-                </v-chip-group>
-              </v-col>
-            </v-row>
-
-            <v-divider class="my-3"></v-divider>
-
-            <!-- Action buttons -->
-            <div class="d-flex align-center">
-              <v-btn text color="primary" @click="openScryfall" :disabled="!card.scryfall_uri">
-                <v-icon left>mdi-open-in-new</v-icon>
-                Open on Scryfall
-              </v-btn>
-              <v-spacer />
-              <v-btn outlined @click="closeDialog">Close</v-btn>
-            </div>
-          </v-col>
-        </v-row>
-      </v-card>
-
-      <!-- Loading state for dialog -->
-      <v-card v-else class="pa-8 text-center">
-        <v-progress-circular indeterminate size="64" color="primary" />
-        <div class="mt-4">Loading card details...</div>
-      </v-card>
-    </v-dialog>
-  </v-container>
+    </v-fab-transition>
+  </div>
 </template>
 
 <script>
 import { mapState, mapGetters } from 'vuex';
-import debounce from 'lodash/debounce';
-import manaRenderer from '@/utils/manaRenderer';
+import CardSearchBar from '@/components/CardSearchBar.vue';
+import CardGrid from '@/components/CardGrid.vue';
+import CardDetailDialog from '@/components/CardDetailDialog.vue';
 
 export default {
   name: 'HomeView',
 
+  components: {
+    CardSearchBar,
+    CardGrid,
+    CardDetailDialog
+  },
+
   data() {
     return {
       dialog: false,
-      placeholderImage: 'https://via.placeholder.com/488x680/2a2a2a/888888?text=No+Image',
-      searchText: '',
-      searchTextInput: '',
-      selectedAutocomplete: null,
-      autocompleteLoading: false,
       loadingMore: false,
       currentPreviewImage: null,
+      activePrintingId: null,
+
+      // Notification states
       errorSnackbar: false,
       errorMessage: '',
-      activePrintingId: null,
+      successSnackbar: false,
+      successMessage: ''
     };
   },
 
   computed: {
-    ...mapState('mtg', ['cards', 'card', 'printings', 'loading', 'error', 'autocomplete']),
-    ...mapGetters('mtg', ['currentCardImage', 'manaSymbolMap']),
+    ...mapState('mtg', [
+      'cards',
+      'card',
+      'printings',
+      'loading',
+      'error',
+      'autocomplete'
+    ]),
+    ...mapGetters('mtg', ['currentCardImage']),
 
     searchHasMore() {
       return this.$store.state.mtg.search.has_more;
-    },
+    }
   },
 
   watch: {
@@ -235,46 +132,42 @@ export default {
   },
 
   methods: {
-    async onAutocompleteTyping(query) {
-      this.searchText = query;
-      if (!query || query.length < 2) {
-        this.autocompleteLoading = false;
-        return;
-      }
-
-      this.autocompleteLoading = true;
-      this.debouncedFetchAutocomplete(query);
-    },
-
-    async onAutocompleteSelect(name) {
-      if (!name) return;
-
-      try {
-        await this.$store.dispatch('mtg/fetchCard', { named: name });
-        this.dialog = true;
-      } catch (err) {
-        this.showError('Failed to load card: ' + err.message);
-      }
-
-      // Clear autocomplete selection after use
-      this.selectedAutocomplete = null;
-      this.searchText = '';
-    },
-
-    async doSearch() {
-      const query = (this.searchTextInput || this.searchText || '').trim();
-      if (!query) {
+    // Search methods
+    async onSearch(query) {
+      const trimmedQuery = query.trim();
+      if (!trimmedQuery) {
         this.showError('Please enter a search term');
         return;
       }
 
       try {
-        await this.$store.dispatch('mtg/fetchCards', { q: query });
+        await this.$store.dispatch('mtg/fetchCards', { q: trimmedQuery });
+        this.scrollToResults();
       } catch (err) {
         // Error is already shown via watcher
       }
     },
 
+    async onCardSelected(cardName) {
+      if (!cardName) return;
+
+      try {
+        await this.$store.dispatch('mtg/fetchCard', { named: cardName });
+        this.dialog = true;
+      } catch (err) {
+        this.showError('Failed to load card: ' + err.message);
+      }
+    },
+
+    async onAutocompleteSearch(query) {
+      try {
+        await this.$store.dispatch('mtg/fetchAutocomplete', query);
+      } catch (err) {
+        console.warn('Autocomplete failed:', err.message);
+      }
+    },
+
+    // Card selection methods
     async selectCard(id) {
       try {
         await this.$store.dispatch('mtg/fetchCard', id);
@@ -297,32 +190,23 @@ export default {
       }
     },
 
+    // Dialog methods
     setPreviewFromPrinting(printing) {
       this.activePrintingId = printing.id;
-      const img = this.printingImage(printing);
+      const img = this.getPrintingImage(printing);
       if (img) {
         this.currentPreviewImage = img;
       }
     },
 
-    getCardThumbnail(card) {
-      if (card.image_uris?.small) return card.image_uris.small;
-      if (card.card_faces?.[0]?.image_uris?.small) {
-        return card.card_faces[0].image_uris.small;
-      }
-      return this.placeholderImage;
+    closeDialog() {
+      this.dialog = false;
+      this.currentPreviewImage = null;
+      this.activePrintingId = null;
     },
 
-    printingThumb(printing) {
-      if (!printing) return this.placeholderImage;
-      if (printing.image_uris?.small) return printing.image_uris.small;
-      if (printing.card_faces?.[0]?.image_uris?.small) {
-        return printing.card_faces[0].image_uris.small;
-      }
-      return this.placeholderImage;
-    },
-
-    printingImage(printing) {
+    // Utility methods
+    getPrintingImage(printing) {
       if (!printing) return null;
 
       const uris = printing.image_uris;
@@ -338,178 +222,284 @@ export default {
       return null;
     },
 
-    isActivePrinting(printing) {
-      return this.activePrintingId === printing.id;
-    },
-
-    openScryfall() {
-      if (this.card?.scryfall_uri) {
-        window.open(this.card.scryfall_uri, '_blank');
-      }
-    },
-
-    closeDialog() {
-      this.dialog = false;
-      this.currentPreviewImage = null;
-      this.activePrintingId = null;
-    },
-
-    renderManaHtml(text) {
-      return manaRenderer.renderManaHtml(text, this.manaSymbolMap);
-    },
-
-    showError(msg) {
-      this.errorMessage = msg;
+    // Notification methods
+    showError(message) {
+      this.errorMessage = message;
       this.errorSnackbar = true;
     },
 
-    capitalizeRarity(rarity) {
-      if (!rarity) return '';
-      return rarity.charAt(0).toUpperCase() + rarity.slice(1);
+    showSuccessMessage(message) {
+      this.successMessage = message;
+      this.successSnackbar = true;
     },
 
-    getLegalityColor(status) {
-      switch (status) {
-        case 'legal': return 'success';
-        case 'banned': return 'error';
-        case 'restricted': return 'warning';
-        default: return 'grey';
-      }
+    // Navigation methods
+    scrollToTop() {
+      this.$vuetify.goTo(0, {
+        duration: 800,
+        easing: 'easeInOutCubic'
+      });
     },
 
-    formatDate(dateString) {
-      if (!dateString) return 'Unknown';
-      try {
-        return new Date(dateString).toLocaleDateString();
-      } catch {
-        return dateString;
-      }
-    },
+    scrollToResults() {
+      this.$nextTick(() => {
+        const resultsElement = document.querySelector('.results-section');
+        if (resultsElement) {
+          this.$vuetify.goTo(resultsElement, {
+            duration: 800,
+            easing: 'easeInOutCubic',
+            offset: 100
+          });
+        }
+      });
+    }
   },
 
   async created() {
-    // Create debounced autocomplete method
-    this.debouncedFetchAutocomplete = debounce(async (query) => {
-      try {
-        await this.$store.dispatch('mtg/fetchAutocomplete', query);
-      } catch (err) {
-        console.warn('Autocomplete failed:', err.message);
-      } finally {
-        this.autocompleteLoading = false;
-      }
-    }, 300);
-
-    // Load initial cards with a safe default search
+    // Load initial cards with a default search to showcase the app
     try {
-      await this.$store.dispatch('mtg/fetchCards', { q: 'set:neo' }); // Default to recent set
+      await this.$store.dispatch('mtg/fetchCards', {
+        q: 'set:one OR set:mom OR set:mat'
+      });
     } catch (err) {
       // Error will be handled by watcher
+      console.warn('Failed to load initial cards:', err.message);
     }
   },
+
+  mounted() {
+    // Add subtle scroll effects
+    window.addEventListener('scroll', this.handleScroll);
+  },
+
+  beforeDestroy() {
+    window.removeEventListener('scroll', this.handleScroll);
+  }
 };
 </script>
 
 <style scoped>
-.mtg-theme {
-  background: linear-gradient(180deg, #0f0f12 0%, #141418 100%);
-  color: #eaeaea;
+.home-view {
+  position: relative;
   min-height: 100vh;
+  background: linear-gradient(135deg, #0f0f12 0%, #141418 50%, #1a1a1e 100%);
+  overflow-x: hidden;
 }
 
-.card-item {
-  background-color: #1e1e1e !important;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+/* Animated background effects */
+.background-effects {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
 }
 
-.hoverable {
-  cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+.magic-circle {
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid rgba(25, 118, 210, 0.1);
+  animation: rotate 60s linear infinite;
 }
 
-.hoverable:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.6);
+.magic-circle-1 {
+  width: 400px;
+  height: 400px;
+  top: -200px;
+  right: -200px;
+  animation-duration: 80s;
+  border-width: 2px;
 }
 
-.card-image-container {
-  background-color: #1a1a1a;
-  border-radius: 8px;
-  padding: 8px;
+.magic-circle-2 {
+  width: 600px;
+  height: 600px;
+  bottom: -300px;
+  left: -300px;
+  animation-duration: 100s;
+  animation-direction: reverse;
+  border-color: rgba(25, 118, 210, 0.05);
 }
 
-.card-detail-image {
+.magic-circle-3 {
+  width: 300px;
+  height: 300px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  animation-duration: 120s;
+  border-color: rgba(25, 118, 210, 0.03);
+}
+
+@keyframes rotate {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.home-container {
+  position: relative;
+  z-index: 1;
+  max-width: 1400px;
+  padding: 24px;
+}
+
+.search-section {
+  margin-bottom: 32px;
+  position: sticky;
+  top: 16px;
+  z-index: 10;
+}
+
+.results-section {
+  position: relative;
+}
+
+.results-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  padding: 16px 0;
+  border-bottom: 2px solid rgba(25, 118, 210, 0.2);
+}
+
+.results-title {
+  font-size: 1.8rem;
+  font-weight: 600;
+  color: #eaeaea;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.results-meta {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.has-more-indicator {
+  color: #1976d2;
+  font-weight: 500;
+}
+
+.fab-search {
+  margin: 0 16px 16px 0;
+  box-shadow: 0 8px 20px rgba(25, 118, 210, 0.3);
+}
+
+.fab-search:hover {
+  box-shadow: 0 12px 30px rgba(25, 118, 210, 0.4);
+  transform: translateY(-2px);
+}
+
+/* Enhanced notification styling */
+.error-snackbar {
+  backdrop-filter: blur(10px);
+}
+
+.success-snackbar {
+  backdrop-filter: blur(10px);
+}
+
+/* Responsive design */
+@media (max-width: 960px) {
+  .home-container {
+    padding: 16px;
+  }
+
+  .search-section {
+    position: static;
+    margin-bottom: 24px;
+  }
+
+  .results-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    text-align: left;
+  }
+
+  .results-title {
+    font-size: 1.5rem;
+  }
+
+  .results-meta {
+    font-size: 0.9rem;
+  }
+}
+
+@media (max-width: 600px) {
+  .home-container {
+    padding: 12px;
+  }
+
+  .results-title {
+    font-size: 1.3rem;
+  }
+
+  .magic-circle-1,
+  .magic-circle-2,
+  .magic-circle-3 {
+    display: none;
+    /* Hide complex animations on small screens for performance */
+  }
+}
+
+/* Scroll-based animations */
+.results-section {
+  animation: fadeInUp 0.8s ease forwards;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Loading state improvements */
+:deep(.v-progress-circular) {
+  filter: drop-shadow(0 4px 8px rgba(25, 118, 210, 0.3));
+}
+
+/* Enhance scroll behavior */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Custom scrollbar for the main content */
+.home-view::-webkit-scrollbar {
+  width: 8px;
+}
+
+.home-view::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
   border-radius: 4px;
 }
 
-.printings-group {
-  overflow-x: auto;
-  padding-bottom: 6px;
-}
-
-.printing-thumb {
-  cursor: pointer;
-  border: 2px solid rgba(255, 255, 255, 0.1);
-  transition: border-color 0.2s ease;
-}
-
-.printing-thumb:hover {
-  border-color: rgba(255, 255, 255, 0.3);
-}
-
-.printing-active {
-  border-color: #1976d2 !important;
-  box-shadow: 0 0 8px rgba(25, 118, 210, 0.3);
-}
-
-.face-block {
-  padding: 12px;
-  background-color: rgba(255, 255, 255, 0.02);
-  border-radius: 8px;
-  border-left: 3px solid #1976d2;
-}
-
-.oracle-text {
-  line-height: 1.4;
-  white-space: pre-wrap;
-}
-
-.oracle-id {
-  font-size: 0.85em;
-  background-color: rgba(255, 255, 255, 0.1);
-  padding: 2px 6px;
+.home-view::-webkit-scrollbar-thumb {
+  background: linear-gradient(to bottom, #1976d2, #42a5f5);
   border-radius: 4px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
-.truncate-1 {
-  max-width: 70%;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* Global mana symbol styling */
-:deep(.mana-symbol) {
-  width: 18px;
-  height: 18px;
-  vertical-align: -3px;
-  margin: 0 1px;
-  display: inline-block;
-}
-
-/* Dark theme adjustments for Vuetify components */
-:deep(.v-card) {
-  background-color: #1e1e1e !important;
-}
-
-:deep(.v-dialog .v-card) {
-  background-color: #2a2a2a !important;
-}
-
-:deep(.v-text-field--outlined .v-input__control .v-input__slot) {
-  background-color: rgba(255, 255, 255, 0.04) !important;
-}
-
-:deep(.v-autocomplete--is-selecting-index .v-chip) {
-  background-color: #1976d2 !important;
+.home-view::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(to bottom, #1565c0, #1976d2);
 }
 </style>
